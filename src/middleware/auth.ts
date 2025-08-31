@@ -56,6 +56,7 @@ export const protect = async (
 
     // Add user to request object
     req.user = user;
+    console.log(req.user);
     next();
   } catch (error) {
     console.error("Auth middleware error:", error);

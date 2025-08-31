@@ -69,9 +69,9 @@ app.get('/api', (req: Request, res: Response) => {
       auth: {
         register: 'POST /api/auth/register',
         login: 'POST /api/auth/login',
-        // profile: 'GET /api/auth/profile',
-        // updateProfile: 'PUT /api/auth/profile',
-        // changePassword: 'PUT /api/auth/change-password'
+        profile: 'GET /api/auth/profile',
+        updateProfile: 'PUT /api/auth/profile',
+        changePassword: 'PUT /api/auth/change-password'
       },
       tasks: {
         getTasks: 'GET /api/tasks',
