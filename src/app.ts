@@ -5,6 +5,13 @@ import morgan from "morgan";
 import dotenv from "dotenv";
 import path from "path";
 import connectDB from "./config/database";
+
+// Import routes
+import authRoutes from './routes/authRoutes';
+// import taskRoutes from './routes/taskRoutes';
+
+// Import middleware
+import { generalLimiter, authLimiter } from './middleware/rateLimiter';
 // Load environment variables
 dotenv.config({
   path: path.resolve(__dirname, "../.env"),
@@ -15,233 +22,73 @@ dotenv.config({
 // Connect to database
 connectDB();
 
-// Types
-interface Task {
-  id: string;
-  title: string;
-  description: string;
-  completed: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
 
-interface CreateTaskRequest {
-  title: string;
-  description?: string;
-}
-
-interface UpdateTaskRequest {
-  title?: string;
-  description?: string;
-  completed?: boolean;
-}
-
-// In-memory storage (replace with database in production)
-let tasks: Task[] = [];
-let taskIdCounter = 1;
 
 const app: Application = express();
 const port = process.env.PORT || 5000;
+
+// Trust proxy (important for rate limiting in production)
+app.set('trust proxy', 1);
 
 // Middleware
 app.use(helmet()); // Security headers
 app.use(cors()); // Enable CORS
 app.use(morgan("combined")); // Logging
-app.use(express.json()); // Parse JSON bodies
-app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
+// Rate limiting
+app.use(generalLimiter);
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Utility functions
-const generateId = (): string => (taskIdCounter++).toString();
-
-const findTaskById = (id: string): Task | undefined => {
-  return tasks.find((task) => task.id === id);
-};
-
-// Routes
 
 // Health check
 app.get("/health", (req: Request, res: Response) => {
   res.status(200).json({
-    status: "OK",
+    success: true,
+    message: "Server is running successfully",
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
+    environment: process.env.NODE_ENV || "development",
   });
 });
 
-// Get all tasks
-app.get("/api/tasks", (req: Request, res: Response) => {
-  const { completed, search } = req.query;
+// API routes
+app.use('/api/auth', authLimiter, authRoutes);
 
-  let filteredTasks = [...tasks];
-
-  // Filter by completion status
-  if (completed !== undefined) {
-    const isCompleted = completed === "true";
-    filteredTasks = filteredTasks.filter(
-      (task) => task.completed === isCompleted
-    );
-  }
-
-  // Search in title and description
-  if (search && typeof search === "string") {
-    const searchTerm = search.toLowerCase();
-    filteredTasks = filteredTasks.filter(
-      (task) =>
-        task.title.toLowerCase().includes(searchTerm) ||
-        task.description.toLowerCase().includes(searchTerm)
-    );
-  }
-
-  res.json({
-    success: true,
-    data: filteredTasks,
-    count: filteredTasks.length,
-  });
-});
-
-// Get single task
-app.get("/api/tasks/:id", (req: Request, res: Response) => {
-  const { id } = req.params;
-  const task = findTaskById(id);
-
-  if (!task) {
-    return res.status(404).json({
-      success: false,
-      message: "Task not found",
-    });
-  }
-
-  res.json({
-    success: true,
-    data: task,
-  });
-});
-
-// Create new task
-app.post(
-  "/api/tasks",
-  (req: Request<{}, {}, CreateTaskRequest>, res: Response) => {
-    const { title, description = "" } = req.body;
-
-    if (!title || title.trim() === "") {
-      return res.status(400).json({
-        success: false,
-        message: "Title is required",
-      });
-    }
-
-    const newTask: Task = {
-      id: generateId(),
-      title: title.trim(),
-      description: description.trim(),
-      completed: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    tasks.push(newTask);
-
-    res.status(201).json({
-      success: true,
-      data: newTask,
-      message: "Task created successfully",
-    });
-  }
-);
-
-// Update task
-app.put(
-  "/api/tasks/:id",
-  (req: Request<{ id: string }, {}, UpdateTaskRequest>, res: Response) => {
-    const { id } = req.params;
-    const { title, description, completed } = req.body;
-
-    const taskIndex = tasks.findIndex((task) => task.id === id);
-
-    if (taskIndex === -1) {
-      return res.status(404).json({
-        success: false,
-        message: "Task not found",
-      });
-    }
-
-    const existingTask = tasks[taskIndex];
-
-    // Update fields if provided
-    if (title !== undefined) {
-      if (title.trim() === "") {
-        return res.status(400).json({
-          success: false,
-          message: "Title cannot be empty",
-        });
-      }
-      existingTask.title = title.trim();
-    }
-
-    if (description !== undefined) {
-      existingTask.description = description.trim();
-    }
-
-    if (completed !== undefined) {
-      existingTask.completed = completed;
-    }
-
-    existingTask.updatedAt = new Date();
-
-    res.json({
-      success: true,
-      data: existingTask,
-      message: "Task updated successfully",
-    });
-  }
-);
-
-// Delete task
-app.delete("/api/tasks/:id", (req: Request, res: Response) => {
-  const { id } = req.params;
-  const taskIndex = tasks.findIndex((task) => task.id === id);
-
-  if (taskIndex === -1) {
-    return res.status(404).json({
-      success: false,
-      message: "Task not found",
-    });
-  }
-
-  const deletedTask = tasks.splice(taskIndex, 1)[0];
-
-  res.json({
-    success: true,
-    data: deletedTask,
-    message: "Task deleted successfully",
-  });
-});
-
-// Toggle task completion
-app.patch("/api/tasks/:id/toggle", (req: Request, res: Response) => {
-  const { id } = req.params;
-  const task = findTaskById(id);
-
-  if (!task) {
-    return res.status(404).json({
-      success: false,
-      message: "Task not found",
-    });
-  }
-
-  task.completed = !task.completed;
-  task.updatedAt = new Date();
-
-  res.json({
-    success: true,
-    data: task,
-    message: `Task marked as ${task.completed ? "completed" : "incomplete"}`,
-  });
-});
 
 app.get("/", (req: Request, res: Response) => {
   res.send("Hello from TypeScript Express!");
 });
+
+// API documentation route
+app.get('/api', (req: Request, res: Response) => {
+  res.json({
+    success: true,
+    message: 'Task Management API',
+    version: '1.0.0',
+    endpoints: {
+      auth: {
+        register: 'POST /api/auth/register',
+        login: 'POST /api/auth/login',
+        // profile: 'GET /api/auth/profile',
+        // updateProfile: 'PUT /api/auth/profile',
+        // changePassword: 'PUT /api/auth/change-password'
+      },
+      tasks: {
+        getTasks: 'GET /api/tasks',
+        getTask: 'GET /api/tasks/:id',
+        createTask: 'POST /api/tasks',
+        updateTask: 'PUT /api/tasks/:id',
+        deleteTask: 'DELETE /api/tasks/:id',
+        toggleTask: 'PATCH /api/tasks/:id/toggle',
+        getStats: 'GET /api/tasks/stats'
+      }
+    },
+    documentation: 'Visit /api for endpoint details'
+  });
+});
+
+
+
 // 404 handler
 app.use("all", (req: Request, res: Response) => {
   res.status(404).json({
