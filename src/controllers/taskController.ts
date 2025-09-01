@@ -211,43 +211,141 @@ export const deleteTask = async (
   }
 };
 
-
-
 // @desc    Get single task
 // @route   GET /api/tasks/:id
 // @access  Private
-export const getTask = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getTask = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
   try {
     if (!req.user) {
       res.status(401).json({
         success: false,
-        message: 'User not found'
+        message: "User not found",
       });
       return;
     }
 
     const task = await Task.findOne({
       _id: req.params.id,
-      user: req.user._id
-    }).populate('user', 'name email');
+      user: req.user._id,
+    }).populate("user", "name email");
 
     if (!task) {
       res.status(404).json({
         success: false,
-        message: 'Task not found'
+        message: "Task not found",
       });
       return;
     }
 
     res.json({
       success: true,
-      data: { task }
+      data: { task },
     });
   } catch (error) {
-    console.error('Get task error:', error);
+    console.error("Get task error:", error);
     res.status(500).json({
       success: false,
-      message: 'Server error while fetching task'
+      message: "Server error while fetching task",
+    });
+  }
+};
+
+// @desc    Toggle task completion
+// @route   PATCH /api/tasks/:id/toggle
+// @access  Private
+
+export const toggleTaskCompletion = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: "User not found",
+      });
+      return;
+    }
+
+    const task = await Task.findOne({
+      _id: req.params.id,
+      user: req.user.id,
+    });
+
+    if (!task) {
+      res.status(404).json({
+        success: false,
+        message: "Task not found",
+      });
+      return;
+    }
+
+    task.completed = !task.completed;
+
+    await task.save();
+
+    // Populate user information
+    await task.populate("user", "name email");
+
+    res.status(200).json({
+      success: true,
+      message: `Task marked as ${task.completed ? "completed" : "incomplete"}`,
+      data: {
+        task,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while toggling task",
+    });
+  }
+};
+
+// @desc    Get task statistics
+// @route   GET /api/tasks/stats
+// @access  Private
+export const getTaskStats = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: "User not found",
+      });
+      return;
+    }
+
+    // Get counts
+    const totalCompletedTasks = await Task.countDocuments({
+      completed: true,
+      user: req.user.id,
+    });
+    const totalIncompletedTasks = await Task.countDocuments({
+      completed: false,
+      user: req.user.id,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "tasks stats fetched successfully",
+      data: {
+        totalCompletedTasks,
+        totalIncompletedTasks,
+        totalTasks: totalCompletedTasks + totalIncompletedTasks,
+      },
+    });
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({
+      success: false,
+      message: "Server error while loading tasks stats",
     });
   }
 };
