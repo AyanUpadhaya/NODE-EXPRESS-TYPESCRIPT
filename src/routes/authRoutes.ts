@@ -20,10 +20,7 @@ const router = Router();
 router.post("/register", registerValidation, register);
 router.post("/login", loginValidation, login);
 
-// Private routes (require authentication)
-router.use(protect); // All routes below require authentication
-
-router.get("/profile", getProfile);
+router.get("/profile", protect, getProfile);
 
 router.put(
   "/profile",
@@ -40,6 +37,7 @@ router.put(
       .withMessage("Please provide a valid email"),
     handleValidationErrors,
   ],
+  protect,
   updateProfile
 );
 
@@ -58,6 +56,7 @@ router.put(
       ),
     handleValidationErrors,
   ],
+  protect,
   changePassword
 );
 
